@@ -190,6 +190,54 @@ function paragraphFromInlineTokens(tokens, options = {}) {
   });
 }
 
+function listTokenToParagraphs(listToken, level = 0) {
+  const paragraphs = [];
+  const baseIndent = 360 + level * 360;
+
+  listToken.items.forEach((item, itemIndex) => {
+    const inlineContent = [];
+    const nestedLists = [];
+
+    item.tokens?.forEach((entry) => {
+      if (entry.type === "space") {
+        return;
+      }
+
+      if (entry.type === "list") {
+        nestedLists.push(entry);
+        return;
+      }
+
+      if (entry.type === "paragraph" || entry.type === "text") {
+        const sourceTokens = entry.tokens?.length ? entry.tokens : [entry];
+        inlineContent.push(...inlineTokensToRuns(sourceTokens));
+        return;
+      }
+
+      if (entry.tokens?.length) {
+        inlineContent.push(...inlineTokensToRuns(entry.tokens));
+      }
+    });
+
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: listToken.ordered ? `${itemIndex + 1}. ` : "• " }),
+          ...(inlineContent.length > 0 ? inlineContent : [new TextRun({ text: "" })]),
+        ],
+        indent: { left: baseIndent, hanging: 220 },
+        spacing: { after: nestedLists.length > 0 ? 40 : 90 },
+      }),
+    );
+
+    nestedLists.forEach((nestedList) => {
+      paragraphs.push(...listTokenToParagraphs(nestedList, level + 1));
+    });
+  });
+
+  return paragraphs;
+}
+
 function tableFromToken(token) {
   const rows = [];
   const headers = token.header ?? [];
@@ -282,21 +330,7 @@ function tokensToDocxChildren(tokens) {
     }
 
     if (token.type === "list") {
-      token.items.forEach((item) => {
-        const itemContent = item.tokens?.length
-          ? item.tokens.flatMap((entry) =>
-              entry.tokens?.length ? inlineTokensToRuns(entry.tokens) : inlineTokensToRuns([entry]),
-            )
-          : [new TextRun({ text: "" })];
-
-        children.push(
-          new Paragraph({
-            children: [new TextRun({ text: token.ordered ? `${item.index}. ` : "• " }), ...itemContent],
-            indent: { left: 360, hanging: 220 },
-            spacing: { after: 90 },
-          }),
-        );
-      });
+      children.push(...listTokenToParagraphs(token));
       return;
     }
 
